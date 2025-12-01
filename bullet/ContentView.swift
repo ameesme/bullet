@@ -93,7 +93,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     ForEach(aliveTasks) { task in
-                        TaskRow(task: task, now: now, reviveAction: { revive(task) }, killAction: { kill(task) })
+                        TaskRow(task: task, now: now, extendAction: { extend(task) }, killAction: { kill(task) })
                             .padding(.horizontal)
                             .transition(.opacity)
                     }
@@ -156,9 +156,9 @@ struct ContentView: View {
         newNotes = ""
     }
 
-    private func revive(_ task: TaskItem) {
+    private func extend(_ task: TaskItem) {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-            task.revive(now: now)
+            task.extendLife(now: now)
         }
     }
 
@@ -196,7 +196,7 @@ private struct BottomOffsetKey: PreferenceKey {
 struct TaskRow: View {
     let task: TaskItem
     let now: Date
-    let reviveAction: () -> Void
+    let extendAction: () -> Void
     let killAction: () -> Void
 
     var body: some View {
@@ -237,8 +237,8 @@ struct TaskRow: View {
         )
         .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 6)
         .swipeActions(edge: .leading) {
-            Button(action: reviveAction) {
-                Label("Revive", systemImage: "heart.fill")
+            Button(action: extendAction) {
+                Label("Extend", systemImage: "heart.fill")
             }
             .tint(.green)
         }
