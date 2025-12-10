@@ -23,9 +23,46 @@ struct ContentView: View {
     // Selected categories by unique name
     @State private var selectedCategoryNames: Set<String> = []
 
+    // Sorting state
+    enum SortKey: String, CaseIterable {
+        case age
+        case deadline
+    }
+    enum SortOrder {
+        case ascending
+        case descending
+    }
+    @State private var sortKey: SortKey = .deadline
+    @State private var sortOrder: SortOrder = .ascending
+
     private var filteredItems: [TaskItem] {
-        let base = showDead ? items.filter { !$0.isAlive } : items.filter { $0.isAlive }
-        // Category filtering not applied yet.
+        // Base alive/dead filter
+        var base = showDead ? items.filter { !$0.isAlive } : items.filter { $0.isAlive }
+
+        // Category filter (only when some selected)
+        if !selectedCategoryNames.isEmpty {
+            base = base.filter { task in
+                if let name = task.category?.name {
+                    return selectedCategoryNames.contains(name)
+                }
+                return false
+            }
+        }
+
+        // Sorting
+        base.sort { lhs, rhs in
+            switch sortKey {
+            case .age:
+                let l = lhs.deadlineDate.timeIntervalSince(lhs.creationDate)
+                let r = rhs.deadlineDate.timeIntervalSince(rhs.creationDate)
+                return sortOrder == .ascending ? (l < r) : (l > r)
+            case .deadline:
+                let l = lhs.deadlineDate
+                let r = rhs.deadlineDate
+                return sortOrder == .ascending ? (l < r) : (l > r)
+            }
+        }
+
         return base
     }
 
@@ -42,35 +79,49 @@ struct ContentView: View {
                         .listRowSeparator(.hidden)
 
                     ForEach(filteredItems) { item in
-                        Text(item.title)
-                            .font(.headline)
-                            .padding(.vertical, 4)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                if showDead {
-                                    Button {
-                                        withAnimation {
-                                            item.revive()
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "arrow.uturn.left")
-                                            Text("Revive")
-                                        }
-                                    }
-                                } else {
-                                    Button {
-                                        withAnimation {
-                                            item.isCompleted = true
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "xmark")
-                                            Text("Kill")
-                                        }
-                                    }
-                                    .tint(.black)
-                                }
+                        HStack(spacing: 8) {
+                            // Leading: colored dot + title
+                            HStack(spacing: 8) {
+                                Image(systemName: "circle.fill")
+                                    .foregroundStyle(item.category?.color ?? .secondary)
+                                    .font(.system(size: 8))
+
+                                Text(item.title)
                             }
+
+                            Spacer(minLength: 8)
+
+                            // Trailing: time string
+                            Text(showDead ? formattedLifespan(item.lifespan) : relativeDeadline(from: item.deadlineDate))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if showDead {
+                                Button {
+                                    withAnimation {
+                                        item.revive()
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.uturn.left")
+                                        Text("Revive")
+                                    }
+                                }
+                            } else {
+                                Button {
+                                    withAnimation {
+                                        item.isCompleted = true
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "xmark")
+                                        Text("Kill")
+                                    }
+                                }
+                                .tint(.black)
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -119,12 +170,16 @@ struct ContentView: View {
 
                         FilterMenuButton(
                             categories: categories,
-                            selectedCategoryNames: $selectedCategoryNames
+                            selectedCategoryNames: $selectedCategoryNames,
+                            sortKey: $sortKey,
+                            sortOrder: $sortOrder
                         )
                     } else {
                         FilterMenuButton(
                             categories: categories,
-                            selectedCategoryNames: $selectedCategoryNames
+                            selectedCategoryNames: $selectedCategoryNames,
+                            sortKey: $sortKey,
+                            sortOrder: $sortOrder
                         )
                     }
                 }
@@ -169,6 +224,35 @@ struct ContentView: View {
             }
         }
     }
+
+    // MARK: - Formatting helpers
+    private func relativeDeadline(from deadline: Date) -> String {
+        let now = Date()
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+
+        var text = f.localizedString(for: deadline, relativeTo: now)
+
+        // Remove leading "in "
+        if text.hasPrefix("in ") {
+            text.removeFirst(3)
+        }
+
+        // Prefix for future deadlines
+        if deadline > now {
+            return "Dead in \(text)"
+        } else {
+            return text
+        }
+    }
+
+    private func formattedLifespan(_ interval: TimeInterval) -> String {
+        let f = DateComponentsFormatter()
+        f.unitsStyle = .full
+        f.allowedUnits = [.year, .month, .weekOfYear, .day, .hour, .minute]
+        f.maximumUnitCount = 2
+        return "Lived for \(f.string(from: interval) ?? "")"
+    }
 }
 
 private struct HeaderView: View {
@@ -188,10 +272,12 @@ private struct HeaderView: View {
     }
 }
 
-// MARK: - Filter menu button using Section headers with multi-select Toggles and colored dots (sorted)
+// MARK: - Filter menu button with sorting and category multi-select
 private struct FilterMenuButton: View {
     let categories: [CategoryItem]
     @Binding var selectedCategoryNames: Set<String>
+    @Binding var sortKey: ContentView.SortKey
+    @Binding var sortOrder: ContentView.SortOrder
 
     var body: some View {
         Menu {
@@ -224,12 +310,58 @@ private struct FilterMenuButton: View {
             Divider()
             Section("Sort by") {
                 Menu("Age") {
-                    Text("Ascending").disabled(true)
-                    Text("Descending").disabled(true)
+                    
+                    Button {
+                        sortKey = .age
+                        sortOrder = .descending
+                    } label: {
+                        HStack {
+                            Text("Descending")
+                            if sortKey == .age && sortOrder == .descending {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    Button {
+                        sortKey = .age
+                        sortOrder = .ascending
+                    } label: {
+                        HStack {
+                            Text("Ascending")
+                            if sortKey == .age && sortOrder == .ascending {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
                 }
+
                 Menu("Deadline") {
-                    Text("Ascending").disabled(true)
-                    Text("Descending").disabled(true)
+                    Button {
+                        sortKey = .deadline
+                        sortOrder = .descending
+                    } label: {
+                        HStack {
+                            Text("Descending")
+                            if sortKey == .deadline && sortOrder == .descending {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    Button {
+                        sortKey = .deadline
+                        sortOrder = .ascending
+                    } label: {
+                        HStack {
+                            Text("Ascending")
+                            if sortKey == .deadline && sortOrder == .ascending {
+                                Spacer()
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
                 }
             }
         } label: {
@@ -257,7 +389,6 @@ private struct LivingDeadToggle: View {
         let background = Color(.systemBackground)
 
         Button {
-            // Haptic feedback on toggle
             let generator = UIImpactFeedbackGenerator(style: .light)
             generator.prepare()
             generator.impactOccurred()
@@ -301,26 +432,23 @@ private struct LivingDeadToggle: View {
         container.mainContext.insert(category)
     }
 
-    // Seed both living and dead tasks, each assigned a random category
-    let baseDate = Date()
+    let now = Date()
+    let twoMonthsAgo = Calendar.current.date(byAdding: .month, value: -2, to: now) ?? now.addingTimeInterval(-60 * 60 * 24 * 60)
+    let threeMonthsInSeconds: TimeInterval = 60 * 60 * 24 * 90
+    let oneHourInSeconds: TimeInterval = 60 * 60
 
-    for i in 1...10 {
-        let created = Calendar.current.date(byAdding: .hour, value: -i, to: baseDate) ?? baseDate
-        let deadline = Calendar.current.date(byAdding: .hour, value: 24 + i, to: created) ?? baseDate.addingTimeInterval(24 * 3600)
+    for i in 1...20 {
+        // Random creation date in [twoMonthsAgo, now]
+        let creationInterval = now.timeIntervalSince(twoMonthsAgo)
+        let randomOffsetFromTwoMonthsAgo = TimeInterval.random(in: 0...creationInterval)
+        let created = twoMonthsAgo.addingTimeInterval(randomOffsetFromTwoMonthsAgo)
+
+        // Random deadline offset in [1 hour, 3 months]
+        let deadlineOffset = TimeInterval.random(in: oneHourInSeconds...threeMonthsInSeconds)
+        let deadline = created.addingTimeInterval(deadlineOffset)
+
         let task = TaskItem(
             title: "Task \(i)",
-            creationDate: created,
-            deadlineDate: deadline,
-            category: categories.randomElement()
-        )
-        container.mainContext.insert(task)
-    }
-
-    for i in 1...10 {
-        let created = Calendar.current.date(byAdding: .day, value: -(i + 2), to: baseDate) ?? baseDate
-        let deadline = Calendar.current.date(byAdding: .hour, value: -1, to: baseDate) ?? baseDate.addingTimeInterval(-3600)
-        let task = TaskItem(
-            title: "Task \(i + 10)",
             creationDate: created,
             deadlineDate: deadline,
             category: categories.randomElement()
