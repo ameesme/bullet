@@ -60,6 +60,9 @@ final class TaskItem {
     var creationDate: Date
     var deadlineDate: Date
 
+    // Marks a task as "dead" manually (soft delete)
+    var isCompleted: Bool = false
+
     @Relationship(deleteRule: .nullify)
     var category: CategoryItem?
 
@@ -67,7 +70,8 @@ final class TaskItem {
         title: String,
         creationDate: Date = .now,
         deadlineDate: Date? = nil,
-        category: CategoryItem? = nil
+        category: CategoryItem? = nil,
+        isCompleted: Bool = false
     ) {
         self.title = title
         self.creationDate = creationDate
@@ -80,17 +84,31 @@ final class TaskItem {
         }
 
         self.category = category
+        self.isCompleted = isCompleted
     }
 
     var lifespan: TimeInterval {
         max(0, deadlineDate.timeIntervalSince(creationDate))
     }
 
+    // Task is alive only if not manually dead and before deadline
     var isAlive: Bool {
-        Date() < deadlineDate
+        !isCompleted && Date() < deadlineDate
+    }
+
+    // Mark as manually dead (soft delete)
+    func markDead() {
+        isCompleted = true
+    }
+
+    // Undo manual death
+    func unmarkDead() {
+        isCompleted = false
     }
 
     func revive() {
+        // Revive clears manual death and extends deadline based on current lifespan rule
+        isCompleted = false
         let newLifespan = max(0, lifespan) * 2
         deadlineDate = creationDate.addingTimeInterval(newLifespan)
     }
