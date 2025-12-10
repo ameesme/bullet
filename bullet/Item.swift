@@ -66,12 +66,16 @@ final class TaskItem {
     @Relationship(deleteRule: .nullify)
     var category: CategoryItem?
 
+    // Persisted rich text storage (RTF data). Use computed `richText` to access as AttributedString.
+    var richTextRTF: Data?
+
     init(
         title: String,
         creationDate: Date = .now,
         deadlineDate: Date? = nil,
         category: CategoryItem? = nil,
-        isCompleted: Bool = false
+        isCompleted: Bool = false,
+        richTextRTF: Data? = nil
     ) {
         self.title = title
         self.creationDate = creationDate
@@ -80,36 +84,75 @@ final class TaskItem {
         if let deadlineDate {
             self.deadlineDate = deadlineDate
         } else {
-            self.deadlineDate = Calendar.current.date(byAdding: .hour, value: 48, to: creationDate) ?? creationDate.addingTimeInterval(48 * 3600)
+            self.deadlineDate = Calendar.current.date(byAdding: .hour, value: 24, to: creationDate) ?? creationDate.addingTimeInterval(48 * 3600)
         }
 
         self.category = category
         self.isCompleted = isCompleted
+        self.richTextRTF = richTextRTF
     }
 
     var lifespan: TimeInterval {
         max(0, deadlineDate.timeIntervalSince(creationDate))
     }
 
-    // Task is alive only if not manually dead and before deadline
+    // Dead when completed OR past deadline.
     var isAlive: Bool {
         !isCompleted && Date() < deadlineDate
     }
 
-    // Mark as manually dead (soft delete)
+    // Mark as manually dead (soft delete). Do not touch deadline.
     func markDead() {
         isCompleted = true
     }
 
-    // Undo manual death
-    func unmarkDead() {
+    // Unmark completion (if any) and extend deadline by twice the current length (compounding).
+    // Order matters: update deadline first, then clear completion so the item
+    // exits the "dead" list immediately in a single predicate flip.
+    func revive() {
+        let newDeadline = creationDate.addingTimeInterval(lifespan * 2)
+        deadlineDate = newDeadline
         isCompleted = false
     }
+}
 
-    func revive() {
-        // Revive clears manual death and extends deadline based on current lifespan rule
-        isCompleted = false
-        let newLifespan = max(0, lifespan) * 2
-        deadlineDate = creationDate.addingTimeInterval(newLifespan)
+// MARK: - Rich Text helpers (AttributedString <-> RTF Data)
+extension TaskItem {
+    // Computed property to work with AttributedString in UI.
+    var richText: AttributedString {
+        get {
+            guard let data = richTextRTF, !data.isEmpty else {
+                return AttributedString("")
+            }
+            // Use NSAttributedString RTF init and bridge to AttributedString
+            if let ns = try? NSAttributedString(data: data,
+                                                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                                                documentAttributes: nil) {
+                return AttributedString(ns)
+            } else {
+                return AttributedString("")
+            }
+        }
+        set {
+            // Bridge to NSAttributedString and archive as RTF
+            let ns = NSAttributedString(newValue)
+            if let data = try? ns.data(from: NSRange(location: 0, length: ns.length),
+                                       documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) {
+                richTextRTF = data
+            } else {
+                richTextRTF = nil
+            }
+        }
+    }
+
+    // Convenience: set rich text from plain string with a base style if desired.
+    func setRichText(from string: String, baseStyle: AttributeContainer? = nil) {
+        if let baseStyle {
+            var attr = AttributedString(string)
+            attr.mergeAttributes(baseStyle, mergePolicy: .keepNew)
+            self.richText = attr
+        } else {
+            self.richText = AttributedString(string)
+        }
     }
 }

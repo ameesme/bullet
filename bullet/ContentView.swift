@@ -35,6 +35,9 @@ struct ContentView: View {
     @State private var sortKey: SortKey = .deadline
     @State private var sortOrder: SortOrder = .ascending
 
+    // Sheet selection
+    @State private var selectedItem: TaskItem?
+
     private var filteredItems: [TaskItem] {
         // Base alive/dead filter
         var base = showDead ? items.filter { !$0.isAlive } : items.filter { $0.isAlive }
@@ -87,15 +90,20 @@ struct ContentView: View {
                                     .font(.system(size: 8))
 
                                 Text(item.title)
+                                    .lineLimit(1, reservesSpace: false)
                             }
 
                             Spacer(minLength: 8)
 
-                            // Trailing: time string
+                            // Trailing: time string (computed inline)
                             Text(showDead ? formattedLifespan(item.lifespan) : relativeDeadline(from: item.deadlineDate))
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.vertical, 4)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedItem = item
+                        }
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             if showDead {
                                 Button {
@@ -106,6 +114,17 @@ struct ContentView: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: "arrow.uturn.left")
                                         Text("Revive")
+                                    }
+                                }
+
+                                Button(role: .destructive) {
+                                    withAnimation {
+                                        modelContext.delete(item)
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "trash")
+                                        Text("Delete")
                                     }
                                 }
                             } else {
@@ -125,6 +144,19 @@ struct ContentView: View {
                     }
                 }
                 .listStyle(.plain)
+
+                // Empty state overlay
+                if filteredItems.isEmpty {
+                    EmptyStateView(
+                        isShowingDead: showDead,
+                        hasCategoryFilter: !selectedCategoryNames.isEmpty,
+                        clearFiltersAction: {
+                            selectedCategoryNames.removeAll()
+                        }
+                    )
+                    .padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
 
                 GeometryReader { geo in
                     let topInset = geo.safeAreaInsets.top + 16
@@ -184,6 +216,9 @@ struct ContentView: View {
                     }
                 }
             }
+            .sheet(item: $selectedItem) { item in
+                DetailSheet(item: item)
+            }
         } detail: {
             Text("Select an item")
                 .foregroundStyle(.secondary)
@@ -228,12 +263,16 @@ struct ContentView: View {
     // MARK: - Formatting helpers
     private func relativeDeadline(from deadline: Date) -> String {
         let now = Date()
-        let f = RelativeDateTimeFormatter()
+        let f = DateComponentsFormatter()
+        f.allowedUnits = [.minute, .hour, .day, .weekOfYear]
         f.unitsStyle = .full
+        f.maximumUnitCount = 2
 
-        var text = f.localizedString(for: deadline, relativeTo: now)
+        // Use the (from:to:) overload to get a relative description
+        let raw = f.string(from: now, to: deadline) ?? ""
 
         // Remove leading "in "
+        var text = raw
         if text.hasPrefix("in ") {
             text.removeFirst(3)
         }
@@ -372,7 +411,7 @@ private struct FilterMenuButton: View {
     }
 }
 
-// MARK: - Living/Dead dynamic-color animated toggle
+// MARK: - Living/Dead dynamic-color animated toggle (simple)
 private struct LivingDeadToggle: View {
     @Binding var isOn: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -419,6 +458,179 @@ private struct LivingDeadToggle: View {
     }
 }
 
+private struct DetailSheet: View {
+    let item: TaskItem
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    InfoRow(
+                        title: "Category",
+                        valueView: AnyView(
+                            HStack(spacing: 6) {
+                                Image(systemName: "circle.fill")
+                                    .foregroundStyle(item.category?.color ?? .secondary)
+                                    .font(.system(size: 8))
+                                Text(item.category?.name ?? "None")
+                            }
+                        )
+                    )
+                    Divider()
+                    InfoRow(
+                        title: "Age",
+                        value: formattedAge(from: item.creationDate)
+                    )
+                    Divider()
+                    InfoRow(
+                        title: "Deadline",
+                        value: formattedDate(item.deadlineDate)
+                    )
+                    Divider()
+
+                    // Rich text section
+                    VStack(spacing: 8) {
+                        if item.richText.characters.isEmpty {
+                            Text("No notes")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            // AttributedString renders directly with Text
+                            Text(item.richText)
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(.top, 16)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 16)
+            }
+            .navigationTitle(item.title)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") { }
+                        .disabled(true)
+                }
+            }
+        }
+    }
+
+    private func formattedAge(from start: Date) -> String {
+        let now = Date()
+        let f = DateComponentsFormatter()
+        f.unitsStyle = .full
+        f.allowedUnits = [.year, .month, .weekOfYear, .day, .hour, .minute]
+        f.maximumUnitCount = 2
+        return f.string(from: start, to: now) ?? ""
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        return f.string(from: date)
+    }
+}
+
+private struct InfoRow: View {
+    let title: String
+    var value: String?
+    var valueView: AnyView?
+
+    init(title: String, value: String) {
+        self.title = title
+               self.value = value
+        self.valueView = nil
+    }
+
+    init(title: String, valueView: AnyView) {
+        self.title = title
+        self.valueView = valueView
+        self.value = nil
+    }
+
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if let valueView {
+                valueView
+            } else if let value {
+                Text(value)
+            }
+        }
+        .font(.body)
+        .foregroundStyle(.secondary)
+        .frame(minHeight: 44)
+    }
+}
+
+private struct EmptyStateView: View {
+    let isShowingDead: Bool
+    let hasCategoryFilter: Bool
+    let clearFiltersAction: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            if isShowingDead {
+                Image(isShowingDead ? "cemetary.empty" : "cemetary")
+                    .resizable()
+                    .frame(width: 100, height: 100)
+                    .aspectRatio(contentMode: .fit)
+                    .colorInvert()
+            } else {
+                Image(isShowingDead ? "cemetary.empty" : "cemetary")
+                    .resizable()
+                    .frame(width: 100, height: 100)
+                    .aspectRatio(contentMode: .fit)
+            }
+            
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                
+                Text(message)
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+
+            }
+
+            HStack(spacing: 12) {
+                if hasCategoryFilter {
+                    Button {
+                        clearFiltersAction()
+                    } label: {
+                        Label("Clear filters", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(.vertical, 32)
+        .frame(maxWidth: 480)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var title: String {
+        if hasCategoryFilter {
+            return "Nothing found for these categories."
+        } else {
+            return isShowingDead ? "Nothing's dead (yet)" : "Everything's dead"
+        }
+    }
+    private var message: String {
+        if hasCategoryFilter {
+            return ""
+        }
+        
+        return isShowingDead ? "Why?" : "You killed it."
+    }
+}
+
 #Preview {
     let container = try! ModelContainer(for: TaskItem.self, CategoryItem.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
 
@@ -437,7 +649,7 @@ private struct LivingDeadToggle: View {
     let threeMonthsInSeconds: TimeInterval = 60 * 60 * 24 * 90
     let oneHourInSeconds: TimeInterval = 60 * 60
 
-    for i in 1...20 {
+    for i in 0...0 {
         // Random creation date in [twoMonthsAgo, now]
         let creationInterval = now.timeIntervalSince(twoMonthsAgo)
         let randomOffsetFromTwoMonthsAgo = TimeInterval.random(in: 0...creationInterval)
@@ -451,7 +663,7 @@ private struct LivingDeadToggle: View {
             title: "Task \(i)",
             creationDate: created,
             deadlineDate: deadline,
-            category: categories.randomElement()
+            category: categories.randomElement(),
         )
         container.mainContext.insert(task)
     }
