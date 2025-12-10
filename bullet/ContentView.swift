@@ -10,44 +10,103 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query private var items: [TaskItem]
+
+    @State private var inputText: String = ""
+    @State private var isFilterPresented: Bool = false
+    @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
         NavigationSplitView {
             List {
                 ForEach(items) { item in
                     NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(item.title)
+                                .font(.title2)
+                                .bold()
+
+                            Text("Created: \(item.creationDate, format: Date.FormatStyle(date: .numeric, time: .shortened))")
+
+                            Text("Deadline: \(item.deadlineDate, format: Date.FormatStyle(date: .numeric, time: .shortened))")
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
                     } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+                        VStack(alignment: .leading) {
+                            Text(item.title)
+                                .font(.headline)
+                            HStack(spacing: 12) {
+                                Text(item.creationDate, format: Date.FormatStyle(date: .numeric, time: .shortened))
+                                    .foregroundStyle(.secondary)
+
+                                Text(item.deadlineDate, format: Date.FormatStyle(date: .numeric, time: .shortened))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.caption)
+                        }
                     }
                 }
                 .onDelete(perform: deleteItems)
             }
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-#endif
             .toolbar {
-#if os(iOS)
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-#endif
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                ToolbarItemGroup(placement: .bottomBar) {
+                    HStack {
+                        TextField("New task...", text: $inputText)
+                            .textFieldStyle(.plain)
+                            .submitLabel(.done)
+                            .focused($isTextFieldFocused)
+                            .onSubmit { submitInput() }
+                    }
+                    .padding(.horizontal, 12)
+                    .contentShape(Rectangle())
+
+                    Spacer()
+
+                    if isTextFieldFocused {
+                        Button {
+                            isTextFieldFocused = false
+                            inputText = ""
+                        } label: {
+                            Image(systemName: "xmark")
+                                .imageScale(.large)
+                        }
+                        .accessibilityLabel("Cancel editing")
+                    } else {
+                        Button {
+                            isFilterPresented = true
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease")
+                                .imageScale(.large)
+                        }
+                        .accessibilityLabel("Filter")
                     }
                 }
             }
         } detail: {
-            Text("Select an item")
+            Text("Select a task")
         }
+        .id(isTextFieldFocused)
+    }
+
+    private func submitInput() {
+        let title = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+        withAnimation {
+            let newTask = TaskItem(title: title, creationDate: .now)
+            modelContext.insert(newTask)
+        }
+        inputText = ""
+        isTextFieldFocused = false
     }
 
     private func addItem() {
         withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+            let newTask = TaskItem(
+                title: "New Task \(Int.random(in: 1...999))",
+                creationDate: .now
+            )
+            modelContext.insert(newTask)
         }
     }
 
@@ -62,5 +121,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [TaskItem.self, CategoryItem.self], inMemory: true)
 }
