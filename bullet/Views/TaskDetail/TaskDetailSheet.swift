@@ -133,7 +133,7 @@ struct TaskDetailSheet: View {
                     } else {
                         InfoRow(
                             title: "Deadline",
-                            value: DateFormatters.formattedDate(item.deadlineDate)
+                            value: DateFormatters.formattedDeadline(item.deadlineDate)
                         )
                     }
 

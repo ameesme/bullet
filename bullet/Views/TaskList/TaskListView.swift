@@ -156,8 +156,8 @@ struct TaskListView: View {
         .onChange(of: showDead) { oldValue, newValue in
             if newValue {
                 // Switching to dead mode
-                sortKey = .age
-                sortOrder = .ascending
+                sortKey = .deadline
+                sortOrder = .descending
             } else {
                 // Switching to living mode
                 sortKey = .deadline

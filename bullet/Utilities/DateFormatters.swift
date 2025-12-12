@@ -182,6 +182,59 @@ enum DateFormatters {
         }
     }
 
+    /// Formats deadline as relative time with "In" or "ago"
+    static func formattedDeadline(_ date: Date) -> String {
+        let interval = date.timeIntervalSince(Date())
+        let absInterval = abs(interval)
+        let isFuture = interval > 0
+
+        let minutes = Int(absInterval / 60)
+        let hours = Int(absInterval / 3600)
+        let days = Int(absInterval / 86400)
+        let weeks = Int(absInterval / 604800)
+        let months = Int(absInterval / 2592000)
+
+        let prefix = isFuture ? "In " : ""
+        let suffix = isFuture ? "" : " ago"
+
+        if months > 0 {
+            let remainder = (absInterval - Double(months * 2592000))
+            let remainderWeeks = Int(remainder / 604800)
+            if remainderWeeks > 0 {
+                return "\(prefix)\(months) \(months == 1 ? "month" : "months"), \(remainderWeeks) \(remainderWeeks == 1 ? "week" : "weeks")\(suffix)"
+            }
+            return "\(prefix)\(months) \(months == 1 ? "month" : "months")\(suffix)"
+        } else if weeks > 0 {
+            let remainder = (absInterval - Double(weeks * 604800))
+            let remainderDays = Int(remainder / 86400)
+            if remainderDays > 0 {
+                return "\(prefix)\(weeks) \(weeks == 1 ? "week" : "weeks"), \(remainderDays) \(remainderDays == 1 ? "day" : "days")\(suffix)"
+            }
+            return "\(prefix)\(weeks) \(weeks == 1 ? "week" : "weeks")\(suffix)"
+        } else if days > 0 {
+            let remainder = (absInterval - Double(days * 86400))
+            let remainderHours = Int(remainder / 3600)
+            if remainderHours > 0 {
+                return "\(prefix)\(days) \(days == 1 ? "day" : "days"), \(remainderHours) \(remainderHours == 1 ? "hr" : "hrs")\(suffix)"
+            }
+            return "\(prefix)\(days) \(days == 1 ? "day" : "days")\(suffix)"
+        } else if hours > 0 {
+            let remainder = (absInterval - Double(hours * 3600))
+            let remainderMins = Int(remainder / 60)
+            if remainderMins > 0 {
+                return "\(prefix)\(hours) \(hours == 1 ? "hr" : "hrs"), \(remainderMins) \(remainderMins == 1 ? "min" : "mins")\(suffix)"
+            }
+            return "\(prefix)\(hours) \(hours == 1 ? "hr" : "hrs")\(suffix)"
+        } else {
+            // Less than an hour - show minutes
+            if minutes > 0 {
+                return "\(prefix)\(minutes) \(minutes == 1 ? "min" : "mins")\(suffix)"
+            } else {
+                return "less than a min\(suffix)"
+            }
+        }
+    }
+
     // MARK: - Relative Time
 
     /// Formats relative time from a date (e.g., "2 Hrs", "3 Days")
