@@ -23,6 +23,10 @@ struct FilterMenuButton: View {
         case descending
     }
 
+    private var isFilterActive: Bool {
+        !selectedCategoryNames.isEmpty
+    }
+
     var body: some View {
         Menu {
             Section("Categories") {
@@ -51,7 +55,7 @@ struct FilterMenuButton: View {
             }
             Divider()
             Section("Sort by") {
-                Menu("Age") {
+                Menu {
                     Button {
                         sortKey = .age
                         sortOrder = .descending
@@ -76,9 +80,16 @@ struct FilterMenuButton: View {
                             }
                         }
                     }
+                } label: {
+                    HStack {
+                        if sortKey == .age {
+                            Image(systemName: "checkmark")
+                        }
+                        Text("Age")
+                    }
                 }
 
-                Menu("Deadline") {
+                Menu {
                     Button {
                         sortKey = .deadline
                         sortOrder = .descending
@@ -103,11 +114,27 @@ struct FilterMenuButton: View {
                             }
                         }
                     }
+                } label: {
+                    HStack {
+                        if sortKey == .deadline {
+                            Image(systemName: "checkmark")
+                        }
+                        Text("Deadline")
+                    }
                 }
             }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease")
-                .imageScale(.large)
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .imageScale(.large)
+
+                if isFilterActive {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 8, height: 8)
+                        .offset(x: 4, y: -4)
+                }
+            }
         }
         .accessibilityLabel("Filter")
     }

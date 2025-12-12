@@ -37,20 +37,19 @@ struct TaskListView: View {
             }
         }
 
-        base.sort { lhs, rhs in
+        return base.sorted { lhs, rhs in
             switch sortKey {
             case .age:
-                let l = lhs.deadlineDate.timeIntervalSince(lhs.creationDate)
-                let r = rhs.deadlineDate.timeIntervalSince(rhs.creationDate)
-                return sortOrder == .ascending ? (l < r) : (l > r)
+                // Sort by creation date - older tasks first in ascending
+                return sortOrder == .ascending
+                    ? lhs.creationDate < rhs.creationDate  // oldest first
+                    : lhs.creationDate > rhs.creationDate  // newest first
             case .deadline:
-                let l = lhs.deadlineDate
-                let r = rhs.deadlineDate
-                return sortOrder == .ascending ? (l < r) : (l > r)
+                return sortOrder == .ascending
+                    ? lhs.deadlineDate < rhs.deadlineDate  // soonest first
+                    : lhs.deadlineDate > rhs.deadlineDate  // latest first
             }
         }
-
-        return base
     }
 
     private var headerTitle: String {
@@ -69,6 +68,7 @@ struct TaskListView: View {
                         TaskRowView(
                             item: item,
                             showDead: showDead,
+                            sortKey: sortKey,
                             modelContext: modelContext
                         )
                         .contentShape(Rectangle())
@@ -153,6 +153,17 @@ struct TaskListView: View {
                 .foregroundStyle(.secondary)
         }
         .preferredColorScheme(showDead ? .dark : .light)
+        .onChange(of: showDead) { oldValue, newValue in
+            if newValue {
+                // Switching to dead mode
+                sortKey = .age
+                sortOrder = .ascending
+            } else {
+                // Switching to living mode
+                sortKey = .deadline
+                sortOrder = .ascending
+            }
+        }
     }
 
     private func submitInput() {
@@ -171,7 +182,39 @@ struct TaskListView: View {
 private struct TaskRowView: View {
     let item: TaskItem
     let showDead: Bool
+    let sortKey: FilterMenuButton.SortKey
     let modelContext: ModelContext
+
+    private var timeText: String {
+        let now = Date()
+        let isPast = item.deadlineDate < now
+
+        if showDead {
+            // Dead tasks
+            if sortKey == .age {
+                return DateFormatters.formattedLifespan(item.lifespan)
+            } else {
+                // Deadline sort - show when they died
+                if isPast {
+                    return "Dead for \(DateFormatters.relativeTime(from: item.deadlineDate))"
+                } else {
+                    return DateFormatters.formattedLifespan(item.lifespan)
+                }
+            }
+        } else {
+            // Living tasks
+            if sortKey == .age {
+                return "Alive for \(DateFormatters.relativeTime(from: item.creationDate))"
+            } else {
+                // Deadline sort
+                if isPast {
+                    return "Dead for \(DateFormatters.relativeTime(from: item.deadlineDate))"
+                } else {
+                    return DateFormatters.relativeDeadline(from: item.deadlineDate)
+                }
+            }
+        }
+    }
 
     var body: some View {
         HStack(spacing: DesignSystem.Spacing.medium) {
@@ -183,9 +226,7 @@ private struct TaskRowView: View {
 
             Spacer(minLength: DesignSystem.Spacing.medium)
 
-            Text(showDead
-                ? DateFormatters.formattedLifespan(item.lifespan)
-                : DateFormatters.relativeDeadline(from: item.deadlineDate))
+            Text(timeText)
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, DesignSystem.Spacing.small)
@@ -215,7 +256,7 @@ private struct TaskRowView: View {
             } else {
                 Button {
                     withAnimation {
-                        item.isCompleted = true
+                        item.markDead()
                     }
                 } label: {
                     HStack(spacing: DesignSystem.Spacing.medium - 2) {
@@ -250,11 +291,13 @@ private struct TaskRowView: View {
     let threeMonthsInSeconds: TimeInterval = 60 * 60 * 24 * 90
     let oneHourInSeconds: TimeInterval = 60 * 60
 
-    for i in 1...20 {
+    for i in 0...5 {
+        // Random creation date in [twoMonthsAgo, now]
         let creationInterval = now.timeIntervalSince(twoMonthsAgo)
         let randomOffsetFromTwoMonthsAgo = TimeInterval.random(in: 0...creationInterval)
         let created = twoMonthsAgo.addingTimeInterval(randomOffsetFromTwoMonthsAgo)
 
+        // Random deadline offset in [1 hour, 3 months]
         let deadlineOffset = TimeInterval.random(in: oneHourInSeconds...threeMonthsInSeconds)
         let deadline = created.addingTimeInterval(deadlineOffset)
 

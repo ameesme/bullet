@@ -50,7 +50,8 @@ struct EmptyStateView: View {
                     } label: {
                         Label("Clear filters", systemImage: "line.3.horizontal.decrease.circle")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.black)
                 }
             }
         }

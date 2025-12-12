@@ -63,6 +63,9 @@ final class TaskItem {
     // Marks a task as "dead" manually (soft delete)
     var isCompleted: Bool = false
 
+    // Tracks when the task was manually completed
+    var completionDate: Date?
+
     @Relationship(deleteRule: .nullify)
     var category: CategoryItem?
 
@@ -101,9 +104,24 @@ final class TaskItem {
         !isCompleted && Date() < deadlineDate
     }
 
+    // Lifetime: How long the task was actually alive
+    var lifetime: TimeInterval {
+        if let completionDate {
+            // Manually completed - calculate time from creation to completion
+            return max(0, completionDate.timeIntervalSince(creationDate))
+        } else if !isAlive {
+            // Died by deadline - calculate time from creation to deadline
+            return max(0, deadlineDate.timeIntervalSince(creationDate))
+        } else {
+            // Still alive - calculate time from creation to now
+            return max(0, Date().timeIntervalSince(creationDate))
+        }
+    }
+
     // Mark as manually dead (soft delete). Do not touch deadline.
     func markDead() {
         isCompleted = true
+        completionDate = Date()
     }
 
     // Unmark completion (if any) and extend deadline by twice the current length (compounding).
@@ -113,5 +131,6 @@ final class TaskItem {
         let newDeadline = creationDate.addingTimeInterval(lifespan * 2)
         deadlineDate = newDeadline
         isCompleted = false
+        completionDate = nil
     }
 }
