@@ -66,8 +66,8 @@ final class TaskItem {
     @Relationship(deleteRule: .nullify)
     var category: CategoryItem?
 
-    // Persisted rich text storage (RTF data). Use computed `richText` to access as AttributedString.
-    var richTextRTF: Data?
+    // Plain text notes
+    var notes: String = ""
 
     init(
         title: String,
@@ -75,7 +75,7 @@ final class TaskItem {
         deadlineDate: Date? = nil,
         category: CategoryItem? = nil,
         isCompleted: Bool = false,
-        richTextRTF: Data? = nil
+        notes: String = ""
     ) {
         self.title = title
         self.creationDate = creationDate
@@ -89,7 +89,7 @@ final class TaskItem {
 
         self.category = category
         self.isCompleted = isCompleted
-        self.richTextRTF = richTextRTF
+        self.notes = notes
     }
 
     var lifespan: TimeInterval {
@@ -113,46 +113,5 @@ final class TaskItem {
         let newDeadline = creationDate.addingTimeInterval(lifespan * 2)
         deadlineDate = newDeadline
         isCompleted = false
-    }
-}
-
-// MARK: - Rich Text helpers (AttributedString <-> RTF Data)
-extension TaskItem {
-    // Computed property to work with AttributedString in UI.
-    var richText: AttributedString {
-        get {
-            guard let data = richTextRTF, !data.isEmpty else {
-                return AttributedString("")
-            }
-            // Use NSAttributedString RTF init and bridge to AttributedString
-            if let ns = try? NSAttributedString(data: data,
-                                                options: [.documentType: NSAttributedString.DocumentType.rtf],
-                                                documentAttributes: nil) {
-                return AttributedString(ns)
-            } else {
-                return AttributedString("")
-            }
-        }
-        set {
-            // Bridge to NSAttributedString and archive as RTF
-            let ns = NSAttributedString(newValue)
-            if let data = try? ns.data(from: NSRange(location: 0, length: ns.length),
-                                       documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) {
-                richTextRTF = data
-            } else {
-                richTextRTF = nil
-            }
-        }
-    }
-
-    // Convenience: set rich text from plain string with a base style if desired.
-    func setRichText(from string: String, baseStyle: AttributeContainer? = nil) {
-        if let baseStyle {
-            var attr = AttributedString(string)
-            attr.mergeAttributes(baseStyle, mergePolicy: .keepNew)
-            self.richText = attr
-        } else {
-            self.richText = AttributedString(string)
-        }
     }
 }
